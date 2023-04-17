@@ -1,29 +1,37 @@
 const { WebSocket, WebSocketServer } = require('ws')
-const { loadConversation, updateConversation } = require('./database.js')
+const { loadConversation, updateConversation, getUserPassword } = require('./database.js')
 const wss = new WebSocketServer({ port: 8080 })
 
-let msgToDisplay = {
-    "type": "messages",
-    "messages": []
-}
+const msgToDisplay = {}
+
+const sockets = {}
+
+let account_info = {}
+
+getUserPassword().then((result) => {account_info = result}).catch((error) => {console.error(error)})
 
 wss.on('connection', function connection(socket, request) {
     const loginInfo = JSON.parse(request.headers.authorization)
     const username = loginInfo.username
     const password = loginInfo.password
     const receiver = loginInfo.receiver
-    let msgToStore = []
+    let chatcode = username + "@" + receiver
     if (!authenticateLogin(username, password)) {
+        socket.close(1001, "Authorization failed")
+        wss.emit('close')
         wss.emit('error', 'Authentication')
     } else {
         console.log("Ready for communication")
+        sockets[username] = socket
         // If other user login with the same chatbox, we will directly send the data without query database
-        if (msgToDisplay.messages.length > 0) {
-            socket.send(JSON.stringify(msgToDisplay))
-            console.log("HERE")
+        if (msgToDisplay[chatcode]?.messages?.length) {
+            socket.send(JSON.stringify(msgToDisplay[chatcode]))
+        } else if (msgToDisplay[receiver+"@"+username]?.messages?.length) {
+            chatcode = receiver + "@" + username
+            socket.send(JSON.stringify(msgToDisplay[chatcode]))
         } else {
-            const promise = loadConversation(username, receiver, socket).then((result) => {
-                msgToDisplay = result
+            loadConversation(username, receiver, socket).then((result) => {
+                msgToDisplay[chatcode] = result
             }).catch((error) => {
                 console.error(error)
             })
@@ -31,30 +39,39 @@ wss.on('connection', function connection(socket, request) {
     }
     socket.on('error', console.error)
 
+    socket.on('close', () => {
+        console.log("Connection closed")
+        delete sockets[username]
+    })
+        
     socket.on('message', function message(data) {
         const jsonData = JSON.parse(data.toString('utf-8'))
-        let item = {
+        let record = {
             "from_user": username,
             "to_user": jsonData.receiver,
             "message": jsonData.message,
             "timestamp": jsonData.datetime,
             "seq": jsonData.seq
         }
-        msgToDisplay.messages.push(`${item.from_user} -> ${item.message}`)
-        if (msgToDisplay.messages.length > 50) {
-            msgToDisplay.messages.shift()
+        msgToDisplay[chatcode].messages.push(`${record.from_user} -> ${record.message}`)
+        if (receiver in sockets) {
+            sockets[receiver].send(JSON.stringify(msgToDisplay[chatcode]))
         }
-        msgToStore.push(item)
-        if (msgToStore.length >= 20) {
-            toUpdate = msgToStore.slice(0, 20)
-            updateConversation(toUpdate)
-            msgToStore = msgToStore.slice(20)
+        if (msgToDisplay[chatcode].messages.length > 50) {
+            msgToDisplay[chatcode].messages.shift()
         }
+        updateConversation(record)
         console.log("received")
     })
 })
 
+wss.on('error', (err) => {
+    console.log("Authorization failed")
+})
+
 function authenticateLogin(username, password) {
-    console.log(username, password)
-    return true
+    if (account_info[username] === password) {
+        return true
+    }
+    return false
 }

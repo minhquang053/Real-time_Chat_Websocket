@@ -4,32 +4,85 @@ import datetime
 import json
 import websockets
 import tkinter as tk
+from tkinter import messagebox
 
+from_user = None
+password = None 
+to_user = None 
+
+def login():
+    global from_user, password, to_user
+    from_user = username_entry.get()
+    password = password_entry.get()
+    to_user = touser_entry.get()
+    auth.destroy()
+
+    
+auth = tk.Tk()
+auth.title("Login Screen")
+
+logined = False
+mbox = True
+
+# Create username and password labels and entry fields
+username_label = tk.Label(auth, text="Username:")
+username_label.pack()
+username_entry = tk.Entry(auth)
+username_entry.pack()
+
+password_label = tk.Label(auth, text="Password:")
+password_label.pack()
+password_entry = tk.Entry(auth, show="*")
+password_entry.pack()
+
+touser_label = tk.Label(auth, text="To user:")
+touser_label.pack()
+touser_entry = tk.Entry(auth)
+touser_entry.pack()
+
+
+# Create login button
+login_button = tk.Button(auth, text="Login", command=login)
+login_button.pack()
+
+# Create message label
+message_label = tk.Label(auth, text="")
+message_label.pack()
+
+auth.wait_window()
 
 # Create the tkinter application window
 root = tk.Tk()
-# root.protocol("WM_DELETE_WINDOW", )
-user = "minhquang"
-to_user = "tester"
+
 global ws
 seq = 0
 sqlt = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+running = True
+
+def on_closing():
+    global mbox
+    mbox = False
+    global running
+    running = False
+    # raise KeyboardInterrupt
 
 async def update_gui():
-    while True:
+    while running:
         root.update()
         await asyncio.sleep(0.01)
+    
 
 def send():
     if not len(e.get()):
         return
-    send = f"{user} -> " + e.get()
+    send = f"{from_user} -> " + e.get()
     asyncio.create_task(push_message(e.get(), ws))
     txt.insert(tk.END, "\n" + send)
     txt.see(tk.END)
     e.delete(0, tk.END)
 
 root.title("Real-time Chat")
+root.protocol("WM_DELETE_WINDOW", on_closing)
 BG_GRAY = "#ABB2B9"
 BG_COLOR = "#17202A"
 TEXT_COLOR = "#EAECEE"
@@ -50,17 +103,15 @@ button = tk.Button(root, text="Send", font=FONT_BOLD, bg=BG_GRAY,
 # websocket handler
 def get_login_info():
     return json.dumps({
-        "username": "minhquang",
-        "password": "test",
-        "receiver": "tester"
+        "username": from_user,
+        "password": password,
+        "receiver": to_user
     })
 
 async def pull_message(websocket):
     async for message in websocket:
-        data = json.loads(message)
-        if data['type'] == "notification":
-             pass   
-        elif data['type'] == "message":
+        data = json.loads(message) 
+        if data['type'] == "message":
             txt.delete("1.0", tk.END)
             for message in data['messages']:
                 txt.insert(tk.END, "\n" + message)
@@ -89,8 +140,20 @@ async def client():
     }) as websocket:
         global ws
         ws = websocket
-        await asyncio.gather(
-            pull_message(websocket), update_gui()
+        msg_task = asyncio.create_task(pull_message(websocket))
+        gui_task = asyncio.create_task(update_gui())
+        # await asyncio.gather(
+        #     pull_message(websocket), update_gui()
+        # )
+        done, pending = await asyncio.wait(
+            [msg_task, gui_task],
+            return_when=asyncio.FIRST_COMPLETED,
         )
+        for task in pending:
+            task.cancel()
+    if mbox:
+        root.withdraw()
+        messagebox.showerror("Error", "An error has occured. Most likely you enter wrong username or password")
 
 asyncio.run(client())
+

@@ -10,6 +10,22 @@ function createConnection() {
     })
 }
 
+function getUserPassword() {
+    const connection = createConnection()
+    query = "select * from `user_password`"
+    let data = {}
+    return new Promise((resolve, reject) => {
+        connection.query(query, (err, result) => {
+            if (err) {
+                reject(err)
+            }
+            for (let record of result) {
+                data[record.username] = record.password
+            }
+            resolve(data)
+        })})
+}
+
 function loadConversation(from_user, to_user, socket) {
     const connection = createConnection()
     query = "select `message`, `from_user` from (" + "select `message`, `from_user`, `timestamp`, `seq` from `user_message` where \
@@ -33,29 +49,24 @@ function loadConversation(from_user, to_user, socket) {
         })})
 }
 
-function updateConversation(items) {
+function updateConversation(record) {
     const connection = createConnection()
-    const insertQueries = []
-    for (let item of items) {
-        insertQueries.push(
-            "INSERT INTO `user_message` (`from_user`, `to_user`, `message`, `timestamp`, `seq`)\
-            VALUES (\"" + item.from_user + "\",\"" + item.to_user + "\",\"" + item.message + "\",\"" + item.timestamp + "\",\"" + item.seq+ "\")"
-        )
-    }
-    for (let insertQuery of insertQueries) {
-        connection.query(insertQuery, (err, result) => {
-            if (err) throw err;
-            console.log('Number of rows affected:', result.affectedRows);
-        })
-    }
+    query = "INSERT INTO `user_message` (`from_user`, `to_user`, `message`, `timestamp`, `seq`)\
+            VALUES (\"" + record.from_user + "\",\"" + record.to_user + "\",\"" + record.message + "\",\"" + record.timestamp + "\",\"" + record.seq+ "\")"
+    connection.query(query, (err, result) => {
+        if (err) throw err;
+        console.log('Number of rows affected:', result.affectedRows);
+    })
     connection.end((err) => {
         if (err) throw err;
         console.log("closed")
     })
 }
-// console.log(result[0])
+
+
 
 module.exports = {
     loadConversation,
-    updateConversation
+    updateConversation,
+    getUserPassword
 }
