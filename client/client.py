@@ -8,9 +8,12 @@ import tkinter as tk
 
 # Create the tkinter application window
 root = tk.Tk()
+# root.protocol("WM_DELETE_WINDOW", )
 user = "minhquang"
 to_user = "tester"
 global ws
+seq = 0
+sqlt = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
 async def update_gui():
     while True:
@@ -24,6 +27,7 @@ def send():
     asyncio.create_task(push_message(e.get(), ws))
     txt.insert(tk.END, "\n" + send)
     txt.see(tk.END)
+    e.delete(0, tk.END)
 
 root.title("Real-time Chat")
 BG_GRAY = "#ABB2B9"
@@ -48,21 +52,33 @@ def get_login_info():
     return json.dumps({
         "username": "minhquang",
         "password": "test",
+        "receiver": "tester"
     })
 
 async def pull_message(websocket):
     async for message in websocket:
         data = json.loads(message)
-        if data.type == "notification":
+        if data['type'] == "notification":
              pass   
-        elif data.type == "message":
-            pass
+        elif data['type'] == "message":
+            txt.delete("1.0", tk.END)
+            for message in data['messages']:
+                txt.insert(tk.END, "\n" + message)
+            txt.see(tk.END)
 
 async def push_message(message, websocket):
+    global seq, sqlt
+    sql_datetime = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    if sql_datetime == sqlt:
+        seq += 1
+    else:
+        sqlt = sql_datetime
+        seq = 0
     final = {
         "receiver": to_user,
         "datetime": datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-        "message": message
+        "message": message,
+        "seq": seq
     }
     await websocket.send(json.dumps(final))
 
